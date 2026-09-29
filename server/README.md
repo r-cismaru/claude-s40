@@ -65,6 +65,7 @@ built from pinned source (AMR/WAV in, raw PCM out, pipes only), read-only root f
 | `deploy/set-key.sh` | put the Claude (or, with `openai`, the speech-to-text) API key on the server (hidden input) |
 | `deploy/admin.sh` | `pair <code>`, `devices`, `revoke <id>`, `logs [n]`, `claude-login`/`-status`/`-logout` (subscription backend) over SSH |
 | `deploy/serve-ca.sh` | serve only the root CA over HTTP for a few minutes |
+| `deploy/local.sh` | the same on THIS machine's Docker without SSH or compose (home computer, Unraid): `up` (build + start), `pair`, `devices`, `revoke`, `logs`, `claude-login`/`-status`/`-logout`, `serve-ca` |
 | `deploy/smoke.sh` | end-to-end check as the phone sees the server |
 | `deploy/do-create.sh`, `deploy/cloud-init.yaml` | optional DigitalOcean droplet + firewall |
 

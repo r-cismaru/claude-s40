@@ -52,15 +52,46 @@ the internet.
 - Forward TCP 443 on the router to the computer, reserve its LAN address,
   and keep the computer awake. HTTPS tunnels (Cloudflare Tunnel, ngrok)
   do not work, because the phone cannot complete their TLS handshake.
-- There is no SSH step: instead of `push.sh`, put `certs/server-chain.pem`,
-  `certs/server.key`, `secrets/admin_token` (`openssl rand -hex 32`) and
-  `.env` (from `.env.example`) in `server/`, then run `docker compose up -d --build`
-  there. It builds for the computer's own CPU; the subscription image
-  also runs on Apple silicon (arm64). On Linux, make the key and token
-  readable by the container's user (uid 65532). The admin commands become
-  `curl` calls to `http://127.0.0.1:9090` with the token (see `deploy/admin.sh`), and
-  `docker compose exec server /usr/local/bin/claude auth login` for the
-  subscription login.
+- Instead of `push.sh`, `admin.sh` and `serve-ca.sh` (which work over SSH),
+  use `server/deploy/local.sh` on that machine. It builds the image there
+  (for its own CPU: the subscription image also runs on Apple silicon),
+  starts the container with the same limits as compose, and keeps its files
+  in `~/claude-s40-server` (`S40_DIR`):
+
+  ```
+  mkdir -p ~/claude-s40-server/certs
+  cp ~/.config/claude-s40/pki/{server-chain.pem,server.key,claude-s40-ca.cer} ~/claude-s40-server/certs/
+  server/deploy/local.sh up             # test mode; settings in ~/claude-s40-server/settings.env
+  server/deploy/local.sh serve-ca 10    # step 6 (forward TCP 80 only meanwhile)
+  server/deploy/local.sh pair <code> "My Nokia"
+  server/deploy/local.sh claude-login   # subscription: sign in once
+  ```
+
+  To go live, set `MOCK_ANTHROPIC=0` in `settings.env` and run `local.sh up`
+  again. `local.sh devices`, `revoke`, `logs` and `claude-status` work like
+  `admin.sh`. Use either `local.sh` or `docker compose`, not both.
+
+**On an Unraid server** (Unraid 7, x86-64; its Docker includes buildx, so
+the image is built on the server and never pulled from or pushed to a
+registry). In the Unraid web terminal:
+
+```
+mkdir -p /mnt/user/appdata/claude-s40-server/certs && cd /mnt/user/appdata/claude-s40-server
+wget -qO- https://github.com/<your-github-user>/claude-s40/archive/refs/heads/main.tar.gz | tar xz
+```
+
+From your computer, copy the certificates:
+`scp ~/.config/claude-s40/pki/{server-chain.pem,server.key,claude-s40-ca.cer} root@<unraid>:/mnt/user/appdata/claude-s40-server/certs/`.
+Then run `claude-s40-main/server/deploy/local.sh up` and the other commands
+above in the Unraid terminal. Unraid's own web UI keeps ports 80 and 443,
+so the phone port is **8443** and `serve-ca` uses **8080**. Forward
+external TCP 443 on the router to `<unraid>:8443`, and TCP 80 to
+`<unraid>:8080` only while `serve-ca` runs. `GATEWAY_URL` stays
+`https://<name>` (port 443 outside). The container appears in the Docker
+tab (start, stop, logs) and starts again with the array
+(`--restart unless-stopped`). Pairings, chats and the Claude Code login
+are in the Docker volumes `claude-s40-data` and `claude-s40-home`. To
+update, download the archive again and run `local.sh up`.
 
 ## 2. Your private certificate authority
 
