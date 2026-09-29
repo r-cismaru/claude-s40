@@ -2,6 +2,9 @@
 //
 //	Nokia S40 phone --TLS 1.0+, RSA, own CA--> this server --HTTPS--> Claude API
 //
+// (or, with CLAUDE_BACKEND=claude-code, through the Claude Code CLI on the
+// owner's Claude subscription instead of an API key: see claudecode.go).
+//
 // It replaces the Cloudflare Worker + Durable Objects and the separate TLS
 // relay. Public listener (TLS, for the phone): /health, /echo, /v1/chat,
 // /v1/more, /v1/conversations, /v1/history, /v1/delete, /v1/pin, /v1/search,
@@ -38,7 +41,7 @@ import (
 
 const (
 	service      = "claude-s40-server"
-	version      = "0.6.1"
+	version      = "0.7.0"
 	echoProbe    = "Claude S40 UTF-8: ç ğ ı İ ö ş ü Ç Ğ Ö Ş Ü"
 	maxRequest   = 6144
 	maxEcho      = 512
@@ -54,6 +57,7 @@ type config struct {
 	environment                        string
 	apiKeyFile, adminTokenFile         string
 	model, effort                      string
+	backend, claudeBin                 string // "api" (API key) or "claude-code" (subscription, via the CLI)
 	fallbacks, mock                    bool
 	reqLimit                           int
 	tokLimit                           int64
@@ -98,6 +102,8 @@ func loadConfig() config {
 	c.effort = env("CLAUDE_EFFORT", "low")
 	c.fallbacks = env("CLAUDE_FALLBACKS", "default") == "default"
 	c.mock = env("MOCK_ANTHROPIC", "0") == "1"
+	c.backend = env("CLAUDE_BACKEND", "api")
+	c.claudeBin = env("CLAUDE_CODE_BIN", "claude")
 	c.reqLimit = envInt("DAILY_REQUEST_LIMIT", 100)
 	c.tokLimit = int64(envInt("DAILY_OUTPUT_TOKEN_LIMIT", 100000))
 	c.search = env("WEB_SEARCH", "1") == "1"
@@ -141,6 +147,37 @@ func setupTranscribe(c config, st *store) (*transcribeService, audioConverter) {
 	return &transcribeService{st: st, stt: stt, limit: c.transcribeLimit}, conv
 }
 
+// setupModel: mock replies, the Claude API with an API key, or the Claude
+// Code CLI on the owner's subscription.
+func setupModel(c config) model {
+	switch {
+	case c.mock:
+		return mockModel{}
+	case c.backend == "claude-code":
+		bin, err := exec.LookPath(c.claudeBin)
+		if err != nil {
+			log.Fatalf("CLAUDE_BACKEND=claude-code but no Claude Code CLI at %q (or set MOCK_ANTHROPIC=1)", c.claudeBin)
+		}
+		m, err := newCLIModel(bin, c.model, c.effort, int64(c.searchMaxUses))
+		if err != nil {
+			log.Fatalf("claude-code: %v", err)
+		}
+		return m
+	case c.backend == "api":
+		key := readSecret(c.apiKeyFile)
+		if key == "" {
+			log.Fatalf("no API key in %s (or set MOCK_ANTHROPIC=1)", c.apiKeyFile)
+		}
+		cm := newClaudeModel(key, c.model, c.effort, c.fallbacks)
+		cm.search = searchConfig{maxUses: int64(max(1, c.searchMaxUses)), country: c.searchCountry,
+			city: c.searchCity, timezone: c.searchTimezone}
+		return cm
+	default:
+		log.Fatalf("CLAUDE_BACKEND must be api or claude-code, not %q", c.backend)
+		return nil
+	}
+}
+
 func readSecret(path string) string {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -156,17 +193,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("db: %v", err)
 	}
-	var m model = mockModel{}
-	if !c.mock {
-		key := readSecret(c.apiKeyFile)
-		if key == "" {
-			log.Fatalf("no API key in %s (or set MOCK_ANTHROPIC=1)", c.apiKeyFile)
-		}
-		cm := newClaudeModel(key, c.model, c.effort, c.fallbacks)
-		cm.search = searchConfig{maxUses: int64(max(1, c.searchMaxUses)), country: c.searchCountry,
-			city: c.searchCity, timezone: c.searchTimezone}
-		m = cm
-	}
+	m := setupModel(c)
 	adminToken := readSecret(c.adminTokenFile)
 	if len(adminToken) < 32 {
 		log.Printf("warning: no admin token (>= 32 chars) in %s; admin API disabled", c.adminTokenFile)
@@ -198,7 +225,7 @@ func main() {
 	adm := &http.Server{Addr: c.adminListen, Handler: srv.adminMux(), ReadHeaderTimeout: 10 * time.Second}
 	go func() { log.Fatal(adm.ListenAndServe()) }()
 	logJSON(map[string]any{"evt": "start", "version": version, "listen": c.listen, "admin": c.adminListen,
-		"model": c.model, "mock": c.mock, "env": c.environment, "web_search": c.search, "search_limit": c.searchLimit,
+		"model": c.model, "mock": c.mock, "backend": c.backend, "env": c.environment, "web_search": c.search, "search_limit": c.searchLimit,
 		"transcribe": c.transcribe, "stt_model": c.sttModel, "transcribe_limit": c.transcribeLimit,
 		"ffmpeg": srv.converter != nil, "image_limit": c.imageLimit})
 	log.Fatal(pub.ListenAndServeTLS("", ""))

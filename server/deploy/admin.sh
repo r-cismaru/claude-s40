@@ -6,6 +6,11 @@
 #   deploy/admin.sh SSH_TARGET devices
 #   deploy/admin.sh SSH_TARGET revoke <dev-xxxxxxxx>
 #   deploy/admin.sh SSH_TARGET logs [n]
+#   deploy/admin.sh SSH_TARGET claude-login    CLAUDE_BACKEND=claude-code: sign in to your
+#                                              Claude subscription (Anthropic's own flow:
+#                                              open the link, paste the code back here)
+#   deploy/admin.sh SSH_TARGET claude-status   is the Claude Code CLI logged in?
+#   deploy/admin.sh SSH_TARGET claude-logout
 set -eu
 TARGET=${1:?usage}; CMD=${2:?usage}; shift 2
 case "$CMD" in
@@ -17,6 +22,10 @@ devices) BODY=""; METHOD=GET; P=/admin/devices ;;
 revoke)
 	ID=$(printf '%s' "${1:?device id}" | tr -cd 'a-z0-9-')
 	BODY="{\"device_id\":\"$ID\"}"; METHOD=POST; P=/admin/devices/revoke ;;
+claude-login|claude-status|claude-logout)
+	case "$CMD" in claude-login) A="auth login --claudeai" T="-t" X="-it" ;; claude-status) A="auth status --text" T="" X="-T" ;;
+	claude-logout) A="auth logout" T="" X="-T" ;; esac
+	exec ssh $T "$TARGET" "cd ~/claude-s40-server && S=''; [ \"\$(id -u)\" = 0 ] || S=sudo; \$S docker compose exec $X server /usr/local/bin/claude $A" ;;
 logs)
 	exec ssh "$TARGET" "cd ~/claude-s40-server && S=''; [ \"\$(id -u)\" = 0 ] || S=sudo; \$S docker compose logs --tail ${1:-30} --no-log-prefix" ;;
 *) echo "unknown command $CMD" >&2; exit 2 ;;

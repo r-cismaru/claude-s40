@@ -108,11 +108,27 @@ server/  Go: phone TLS listener, chat service, SQLite store, admin API
 
 - `main.go` wiring, TLS policy, handlers; `protocol.go` S40/1 format;
   `chat.go` chat rules; `store.go` SQLite; `claude.go` SDK call + mock;
+  `claudecode.go` the optional subscription backend (below);
   `transcribe.go` voice messages (audio checks, ffmpeg, speech-to-text);
   `sanitize.go` plain-text replies for a 240x320 screen.
 - Admin API on a separate listener, bound to 127.0.0.1 on the host,
   protected by a token generated on the server; used through SSH
   (`deploy/admin.sh`).
+- `CLAUDE_BACKEND=claude-code` (image target `claude-code`,
+  `compose.claude-code.yaml`): instead of the SDK with an API key, each
+  message runs Anthropic's Claude Code CLI (`claude -p`, unmodified, pinned)
+  on the owner's Claude subscription. The CLI keeps its own login (made with
+  `claude auth login` in its home volume); the server never reads it and
+  gives the CLI a fixed environment without `ANTHROPIC_*` variables. The CLI
+  runs locked down: `--tools ""` (or only `WebSearch`), `--safe-mode`,
+  `--strict-mcp-config`, `--disable-slash-commands`,
+  `--no-session-persistence`, `--permission-mode dontAsk`, our own
+  `--system-prompt`, `--max-turns`, `CLAUDE_CODE_MAX_RETRIES=0`, no
+  nonessential traffic. The conversation goes in as one stream-json user
+  message (history as text plus the photos, then `[New message]` and the
+  message), and the answer comes back as the stream-json `result`. At most 2
+  runs at once. Personal use only: a subscription serves its owner, never
+  other people.
 
 ## S40/1 protocol
 
@@ -243,6 +259,12 @@ Statuses: `ok`, `pending`, `busy`, `limit`, `request_mismatch`,
   `uncertain`.
 - The Messages API has no idempotency key, so there is no exactly-once
   guarantee.
+- The subscription backend keeps these rules: the CLI runs with
+  `CLAUDE_CODE_MAX_RETRIES=0` and a 120 s timeout. A run that started a
+  session but gave no result becomes `uncertain`, and one that never started
+  a session is a definite `config_error`. The CLI itself sends a refused
+  request once more, and continues a reply that reaches its output limit
+  (8192 tokens). These calls use the plan's limits, not API credit.
 - Voice messages follow the same rules with their own records: the phone
   keeps the clip and its `request` id while the screen is open, "Retry"
   sends the same id and clip (answered from the record, SHA-256 of the
@@ -256,7 +278,7 @@ Statuses: `ok`, `pending`, `busy`, `limit`, `request_mismatch`,
 |---|---|
 | message | ≤ 1000 characters (request body ≤ 6 KiB, room for the user's notes) |
 | reply | sanitised (no Markdown/emoji/non-BMP), ≤ 8000 characters stored, sent in parts of ≤ 2000, `truncated` flag |
-| model | `CLAUDE_MODEL`, `max_tokens` 2048, `effort` from `CLAUDE_EFFORT`, optional server-side refusal fallback |
+| model | `CLAUDE_MODEL`, `max_tokens` 2048, `effort` from `CLAUDE_EFFORT`, optional server-side refusal fallback (subscription backend: output limit 8192, no fallback) |
 | context | newest 16 messages and ≤ 16000 characters of the conversation |
 | photo | ≤ 1 MiB upload, ≤ 20 MP, stored ≤ 1024 px JPEG; newest 3 photos of a conversation sent with each message |
 | voice message | ≤ 30 s on the phone, ≤ 35 s and ≤ 640 KiB on the server; audio never stored; transcript ≤ 996 characters |
@@ -270,7 +292,9 @@ visible to the device that created it.
 
 JSON lines: start, TLS ClientHello summary (SNI present, versions, number of
 suites), each request (method, path, status, duration, negotiated TLS),
-upstream errors (HTTP status, Anthropic error type/message, request id),
+upstream errors (HTTP status, Anthropic error type/message, request id;
+for the subscription backend: status, error category, exit code, and the
+CLI's stderr only when it could not start a session),
 voice clips (format, bytes, length in ms), photos (bytes received and
 stored, pixel size) and speech-to-text errors (HTTP
 status, error type/code/message, request id).

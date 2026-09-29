@@ -1,16 +1,17 @@
 # Claude S40 server. On the VPS, in this directory:
 #   certs/server-chain.pem, certs/server.key   phone-facing TLS (our own CA)
-#   secrets/anthropic_api_key                  Claude API key (only when MOCK_ANTHROPIC=0)
+#   secrets/anthropic_api_key                  Claude API key (only when MOCK_ANTHROPIC=0, CLAUDE_BACKEND=api)
 #   secrets/openai_api_key                     speech-to-text key (only when TRANSCRIBE=openai)
 #   secrets/admin_token                        generated on the server by deploy/push.sh
 #   .env                                       settings below (no secrets)
 #
 #   docker compose up -d
+#   (Claude subscription instead of an API key: see compose.claude-code.yaml)
 #   docker compose logs -f        # JSON lines: method/path/status/ms/TLS, no content
 services:
   server:
     build: .
-    image: claude-s40-server:0.6.1
+    image: claude-s40-server:0.7.0
     pull_policy: never
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-production}

@@ -1,0 +1,28 @@
+# Claude subscription instead of an API key (CLAUDE_BACKEND=claude-code).
+# Used together with compose.yaml; deploy/push.sh puts
+# COMPOSE_FILE=compose.yaml:compose.claude-code.yaml in .env on the server,
+# so plain "docker compose ..." there uses both files.
+#
+# The image adds Anthropic's Claude Code CLI (unmodified, pinned). The CLI
+# keeps its own login in the claudecode volume (its home directory); the
+# server never reads it. Log in once, in Anthropic's own sign-in flow:
+#   deploy/admin.sh SSH_TARGET claude-login
+# Personal use only: a subscription is for its owner, so pair only your own
+# phones with this server (docs/SETUP.md).
+services:
+  server:
+    build:
+      context: .
+      target: claude-code
+    image: claude-s40-server:0.7.0-claude-code
+    environment:
+      CLAUDE_BACKEND: claude-code
+      HOME: /home/nonroot
+    volumes:
+      - claudecode:/home/nonroot
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    # one CLI run needs ~225 MB; the server runs at most 2 at once
+    mem_limit: 768m
+volumes:
+  claudecode:

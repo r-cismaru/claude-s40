@@ -109,7 +109,7 @@ put on the phone once. Details and measurements: [docs/ARCHITECTURE.md](docs/ARC
 | Path | What |
 |---|---|
 | [`app/`](app/) | The phone app: CLDC 1.1 / MIDP 2.0 MIDlet, ~100 KB JAR, English + Turkish UI (see Features). Reproducible build with 44 package checks. |
-| [`server/`](server/) | One Go binary / Docker image (~7 MB): phone-facing TLS, chat backend (official `anthropic-sdk-go`), SQLite, pairing, admin API bound to localhost. |
+| [`server/`](server/) | One Go binary / Docker image (~7 MB): phone-facing TLS, chat backend (official `anthropic-sdk-go`, or optionally the Claude Code CLI on your own Claude subscription), SQLite, pairing, admin API bound to localhost. |
 | [`docs/`](docs/) | [SETUP.md](docs/SETUP.md) (step by step), [ARCHITECTURE.md](docs/ARCHITECTURE.md) (protocol, TLS, design). |
 
 ## Get it
@@ -135,6 +135,10 @@ Full guide: **[docs/SETUP.md](docs/SETUP.md)**. In short:
    `server/deploy/admin.sh root@<server-ip> pair <code>`.
 7. `server/deploy/set-key.sh root@<server-ip>` and
    `S40_MOCK=0 server/deploy/push.sh root@<server-ip> --execute` to go live.
+   For a server only you use, your Claude Pro/Max subscription can replace
+   the API key: `S40_MOCK=0 S40_BACKEND=claude-code server/deploy/push.sh root@<server-ip> --execute`,
+   then `server/deploy/admin.sh root@<server-ip> claude-login`
+   ([details](docs/SETUP.md#your-claude-subscription-instead-of-an-api-key-optional)).
 
 ## Development
 
@@ -164,7 +168,9 @@ deployment), OpenSSL or LibreSSL.
   per-device daily request, output-token and web-search limits and never
   retries a paid call automatically. Web searches are billed per search and
   their results count as input tokens. Set a spending limit in the Claude
-  Console.
+  Console. With the subscription backend there is no key: messages count
+  against your Claude plan's usage limits, and the server must serve only
+  you.
 - Voice messages (off unless you turn them on) go to OpenAI's
   speech-to-text, billed to your OpenAI key. The recording is not stored;
   the text is kept for a day so a retry never pays twice.
