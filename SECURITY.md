@@ -8,6 +8,12 @@
   offers modern TLS to modern clients and never RC4 or 3DES.
 - **The Claude API key is on your server.** Use a dedicated key with a
   spending limit, keep SSH restricted, keep the host patched.
+- **With `CLAUDE_BACKEND=claude-code`, your Claude subscription login is on
+  your server** (Claude Code's own credentials file in the `claudecode`
+  Docker volume). Anyone with root on the host can use your plan. The server
+  process never reads it; the CLI runs without tools apart from optional web
+  search. `deploy/admin.sh HOST claude-logout` signs it out. Use this only
+  for a server that serves only you.
 - **Your root CA's private key** stays on the machine where you created it
   (`~/.config/claude-s40/pki`). Anyone with it can impersonate your server to
   your phone. Back it up offline; never copy it to the server.

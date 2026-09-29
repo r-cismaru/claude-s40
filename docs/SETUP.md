@@ -12,6 +12,8 @@ Commands run on your computer (macOS or Linux) unless stated otherwise.
   terminate HTTPS for you (Cloudflare, App Platform, Vercel, ...) do **not**
   work, the phone cannot complete their TLS handshake.
 - A Claude API key (https://console.anthropic.com). Set a spending limit.
+  Or, for a server only you use: your Claude Pro or Max subscription
+  instead of a key (see "Your Claude subscription" in step 8).
 - On your computer: Go 1.26+, JDK 11+, Python 3 with Pillow (`pip install
   pillow`), OpenSSL 3 or LibreSSL, Docker with buildx, ssh.
 - A way to install a Java app on the phone: Gammu over USB, Bluetooth file
@@ -154,6 +156,44 @@ phone), `S40_SEARCH_MAX_USES` (3 per message), and optionally
 search on top of tokens. Pairings and chats survive redeploys (Docker
 volume `s40data`).
 
+### Your Claude subscription instead of an API key (optional)
+
+With Claude Pro or Max you can skip the API key. The server then answers
+each message through Anthropic's Claude Code CLI, which ships unmodified
+(pinned version and checksum) in a larger image. The CLI keeps its own
+login, which you make once in Anthropic's own sign-in flow; the server never
+reads it. Run these in YOUR terminal:
+
+```
+S40_MOCK=0 S40_BACKEND=claude-code server/deploy/push.sh $SERVER --execute
+server/deploy/admin.sh $SERVER claude-login      # open the link, sign in to claude.ai, paste the code back
+server/deploy/admin.sh $SERVER claude-status     # shows the signed-in account
+```
+
+- **Personal use only.** Anthropic allows subscription sign-in for your own
+  use of Claude Code. It does not allow third-party apps to offer claude.ai
+  login, or requests from other people routed through your plan
+  ([Claude Code legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)).
+  Pair only your own phones. If other people use your server, give it an
+  API key instead.
+- Messages count against your plan's usage limits, shared with claude.ai
+  and Claude Code. While the limit is reached the phone shows "Claude is
+  busy". The server's daily limits (`S40_REQ_LIMIT`, ...) still apply.
+- Differences from the API key: web search uses Claude Code's WebSearch
+  tool, so there is no "Web: <sources>" line and `S40_SEARCH_COUNTRY/_CITY/_TIMEZONE`
+  and `S40_FALLBACKS` are ignored. The CLI starts for every message, so a
+  reply takes a few seconds longer (timeout 120 s). The CLI itself asks once
+  more after a refusal and continues a reply that reaches its output limit.
+  Those extra calls use your plan's limits, and cost money only if you
+  turned on paid extra usage for your plan.
+- The host needs about 1 GB RAM: the container may use up to 768 MB,
+  because each CLI run needs about 225 MB and at most 2 run at once.
+- The login is stored in the Docker volume `claude-s40-server_claudecode`.
+  `admin.sh $SERVER claude-logout` signs out. When the login expires, the
+  phone shows "No reply (config_error)": run `claude-login` again.
+- Back to an API key: `set-key.sh`, then `S40_MOCK=0 push.sh $SERVER --execute`
+  (`S40_BACKEND` defaults to `api`).
+
 **Voice messages** (optional, off by default): the server turns a short
 recording into text with OpenAI's speech-to-text (paid per use, well
 under a cent per 30 s clip with the default model; check OpenAI's prices).
@@ -223,6 +263,8 @@ your hands, revoke the device.
 | "host name mismatch" | server certificate issued for a different name/IP than the app uses |
 | HTTP code but "not a Claude S40 server reply" | operator proxy or wrong address |
 | "No credits" | the Claude API account has no credit balance |
+| "No reply (config_error)" with `S40_BACKEND=claude-code` | Claude Code is not logged in or the login expired: `admin.sh $SERVER claude-login` |
+| "Claude is busy" for hours with `S40_BACKEND=claude-code` | your Claude plan's usage limit is reached; it resets on its own |
 | "Daily limit reached" | raise `S40_REQ_LIMIT` / `S40_TOK_LIMIT` |
 | Claude no longer searches the web | the phone's daily search budget is used up (`S40_SEARCH_LIMIT`) or web search is off in Settings / `S40_SEARCH=0` |
 | "Access code invalid or revoked" | pair again |

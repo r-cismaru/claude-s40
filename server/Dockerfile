@@ -31,6 +31,23 @@ RUN go vet ./... && go test -count=1 ./... \
  && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -buildid=" -o /out/claude-s40-server . \
  && mkdir -p /out/data
 
+# Optional image for a server that uses its owner's Claude subscription
+# instead of an API key (CLAUDE_BACKEND=claude-code, compose.claude-code.yaml):
+# the same server plus Anthropic's Claude Code CLI, unmodified, pinned by
+# version and checksum (from the release manifest). The CLI needs glibc, so
+# this one is distroless/cc. Only built with --target claude-code; linux/amd64.
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS claude-code
+ADD --checksum=sha256:5cd90aabd83f8a15136c35aa37bb1d92b348993573316643dc3fe4e04afbf88f --chmod=555 \
+    https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/2.1.284/linux-x64/claude \
+    /usr/local/bin/claude
+COPY --from=build /out/claude-s40-server /claude-s40-server
+COPY --from=ffmpeg /ffmpeg /usr/local/bin/ffmpeg
+COPY --from=build --chown=65532:65532 /out/data /data
+USER nonroot:nonroot
+ENV CLAUDE_BACKEND=claude-code
+EXPOSE 8443 9090
+ENTRYPOINT ["/claude-s40-server"]
+
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 COPY --from=build /out/claude-s40-server /claude-s40-server
 COPY --from=ffmpeg /ffmpeg /usr/local/bin/ffmpeg
