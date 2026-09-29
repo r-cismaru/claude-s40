@@ -39,6 +39,29 @@ DO_CONTEXT=default SSH_FROM=<your-ip>/32 deploy/do-create.sh --execute  # create
 
 Wait until `ssh $SERVER docker --version` works (a few minutes).
 
+**At home instead of a VPS** (e.g. your own Mac with Docker Desktop): the
+phone comes in over mobile data, so your computer must be reachable from
+the internet.
+- Your router needs a public IPv4 address (no CGNAT). If the WAN address
+  in the router differs from what https://ifconfig.me shows, or is in
+  100.64-100.127.x.x, 10.x or 192.168.x, port forwarding cannot work: ask
+  your provider for a public IP or use a VPS.
+- Use a dynamic DNS name (from the router or e.g. DuckDNS), since the home
+  IP changes. Issue the certificate for that name in step 2 and use it as
+  `GATEWAY_URL` in step 4.
+- Forward TCP 443 on the router to the computer, reserve its LAN address,
+  and keep the computer awake. HTTPS tunnels (Cloudflare Tunnel, ngrok)
+  do not work, because the phone cannot complete their TLS handshake.
+- There is no SSH step: instead of `push.sh`, put `certs/server-chain.pem`,
+  `certs/server.key`, `secrets/admin_token` (`openssl rand -hex 32`) and
+  `.env` (from `.env.example`) in `server/`, then run `docker compose up -d --build`
+  there. It builds for the computer's own CPU; the subscription image
+  also runs on Apple silicon (arm64). On Linux, make the key and token
+  readable by the container's user (uid 65532). The admin commands become
+  `curl` calls to `http://127.0.0.1:9090` with the token (see `deploy/admin.sh`), and
+  `docker compose exec server /usr/local/bin/claude auth login` for the
+  subscription login.
+
 ## 2. Your private certificate authority
 
 The phone will trust **only** this root. Keep `~/.config/claude-s40/pki`

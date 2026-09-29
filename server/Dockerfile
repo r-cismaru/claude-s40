@@ -5,6 +5,8 @@
 # raw PCM output and the pipe protocol: no network, no other formats. It
 # runs on pipes, never on files. Tests run during the build, with this ffmpeg.
 # Certificates, keys and the database are NOT in the image.
+# set by BuildKit: amd64 (a typical VPS) or arm64 (e.g. a Mac with Apple silicon)
+ARG TARGETARCH
 FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS ffmpeg
 RUN apk add --no-cache build-base
 ADD --checksum=sha256:8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e \
@@ -34,12 +36,21 @@ RUN go vet ./... && go test -count=1 ./... \
 # Optional image for a server that uses its owner's Claude subscription
 # instead of an API key (CLAUDE_BACKEND=claude-code, compose.claude-code.yaml):
 # the same server plus Anthropic's Claude Code CLI, unmodified, pinned by
-# version and checksum (from the release manifest). The CLI needs glibc, so
-# this one is distroless/cc. Only built with --target claude-code; linux/amd64.
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS claude-code
+# version and checksum per architecture (from the release manifest). The CLI
+# needs glibc, so this one is distroless/cc. Only built with --target
+# claude-code, for linux/amd64 or linux/arm64 (only that CLI is downloaded).
+FROM scratch AS claude-cli-amd64
 ADD --checksum=sha256:5cd90aabd83f8a15136c35aa37bb1d92b348993573316643dc3fe4e04afbf88f --chmod=555 \
     https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/2.1.284/linux-x64/claude \
-    /usr/local/bin/claude
+    /claude
+FROM scratch AS claude-cli-arm64
+ADD --checksum=sha256:3dd0f96d7ada463152d20300186f6cfc6ab94b57e218f49e3ac86db42ac695a6 --chmod=555 \
+    https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/2.1.284/linux-arm64/claude \
+    /claude
+FROM claude-cli-${TARGETARCH} AS claude-cli
+
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS claude-code
+COPY --from=claude-cli /claude /usr/local/bin/claude
 COPY --from=build /out/claude-s40-server /claude-s40-server
 COPY --from=ffmpeg /ffmpeg /usr/local/bin/ffmpeg
 COPY --from=build --chown=65532:65532 /out/data /data

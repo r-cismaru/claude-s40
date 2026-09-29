@@ -50,7 +50,8 @@ the server), `secrets/anthropic_api_key` (`deploy/set-key.sh`),
 `secrets/openai_api_key` (`deploy/set-key.sh HOST openai`, only for
 `TRANSCRIBE=openai`). With `CLAUDE_BACKEND=claude-code` there is no API
 key: `compose.claude-code.yaml` (named in `.env` as `COMPOSE_FILE`) adds the
-image with the CLI, its login in the `claudecode` volume, a `/tmp` tmpfs and
+image with the CLI (linux/amd64 or linux/arm64, e.g. Docker Desktop on
+Apple silicon), its login in the `claudecode` volume, a `/tmp` tmpfs and
 768 MB. Container: distroless non-root plus a static ffmpeg
 built from pinned source (AMR/WAV in, raw PCM out, pipes only), read-only root fs, `cap_drop: ALL`, no-new-privileges,
 128 MB; data in the `s40data` volume.
